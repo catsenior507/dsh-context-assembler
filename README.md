@@ -1,281 +1,398 @@
-# dsh-context-assembler · 组装式上下文
+<div align="center">
 
-一个 DeepSeek Harness 客户端插件：把会话上下文变成一棵**可勾选的树**，由你（和 agent 自己）决定下一步到底给模型看什么。
+# Assembled Context
 
-## 它解决什么问题
+**Turn the context window from a length into a set of decisions.**
 
-Harness 默认只有两种上下文状态：**全量**，或者被 `dsh-compaction-basic` 自动压缩成一条你看不到、也无法调整的摘要。
-长任务里这很糟：一次 `grep` 的 4000 token 输出、一段已经排查完的报错、一个已经成功交付的子任务，
-都会一直占着窗口，直到某个阈值触发一次黑箱压缩——而压缩之后你既不知道丢了什么，也没法把它拿回来。
+A DeepSeek Harness client plugin that keeps a checkable tree over the session log,
+so you — and the agent itself — choose what the next request actually contains.
 
-这个插件把"上下文"从**一个长度**变成**一组决定**。
+[![License: MIT](https://img.shields.io/badge/license-MIT-3DA639.svg)](LICENSE)
+[![DeepSeek Harness plugin](https://img.shields.io/badge/DeepSeek%20Harness-client%20plugin-4D6BFE.svg)](#install)
+[![version](https://img.shields.io/github/package-json/v/catsenior507/dsh-context-assembler?color=4D6BFE)](package.json)
+[![stars](https://img.shields.io/github/stars/catsenior507/dsh-context-assembler?color=4D6BFE)](https://github.com/catsenior507/dsh-context-assembler/stargazers)
 
-## 核心机制：表层（surface）与装配模式
+[English](README.md) · [简体中文](README.zh.md)
 
-Harness 的会话是一条只追加的事件日志，模型实际读到的是它的**表层投影**：
-`system/message`、`user/message`、`assistant/message`、`tool/result` 四类事件按顺序构成表层，
-`session.deriveMessages()` 把表层折叠成发给模型的消息数组。
+</div>
 
-Harness 给生产者只有**一种**结构操作：
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/assembled-context-dark.svg">
+  <img alt="A session log folded into a context tree, and the assembled messages the model reads" src="assets/assembled-context-light.svg">
+</picture>
+
+---
+
+## The problem
+
+Harness gives you exactly two context states: **everything**, or whatever `dsh-compaction-basic`
+compresses into a summary you never see and cannot adjust. On a long task that is bad:
+a 4,000-token `grep` dump, a stack trace you already diagnosed, a sub-task that finished and
+shipped — all of them keep occupying the window until a threshold fires a compaction you can
+neither inspect nor undo.
+
+This plugin turns "context" from **a length** into **a set of decisions**.
+
+## How it works
+
+A harness session is an append-only event log, and what the model reads is a **surface
+projection** of it: `system/message`, `user/message`, `assistant/message` and `tool/result`
+events in order form the surface, and `session.deriveMessages()` folds that surface into the
+message array sent to the provider.
+
+Harness gives producers exactly **one** structural operation:
 
 ```text
 { op: "replace", startSeq, endSeq }
 ```
 
-它把**当前表层顺序**上 `[startSeq, endSeq]` 这一段替换成替换事件自己的**一条**消息节点，其余节点原地不动。
-压缩就是这么做的。本插件把同一个操作变成了一个可交互的编辑器：
+It replaces that span of the **current surface order** with **one** message node of its own,
+leaving every other node exactly where it was. Compaction is built on it. This plugin turns the
+same operation into an interactive editor:
 
-| 模式 | 含义 | 表层效果 |
+| Mode | Meaning | Surface effect |
 | --- | --- | --- |
-| **原文** `full` | 原样保留 | 不做任何替换 |
-| **关键** `key` | 只保留关键部分 | 把整段折叠成**一条摘要消息**（agent 或宿主撰写） |
-| **移出** `off` | 移出上下文 | 把整段折叠成一条极短的标记（可配置为零 token） |
+| **full** | keep verbatim | no replacement |
+| **key** | keep the point | the span becomes **one summary message** (written by the agent or the host) |
+| **off** | drop from context | the span becomes a very short marker (configurable down to zero tokens) |
 
-因为只有被折叠的区间会发生替换、其它节点位置不变，所以**未触碰的前缀仍然可以被 provider 的 KV cache 复用**。
+Because only the folded spans are replaced and every other node keeps its position,
+**the untouched prefix stays reusable by the provider's KV cache**.
 
-## 三个关键设计决定
+## Three design decisions
 
-### 1. 树是日志的**读取**，不是插件自己的状态
+### 1. The tree is a *read* of the log, not plugin state
 
-每次打开面板都从会话日志重新折叠出表层、重建整棵树。所以：
+Every time the panel opens it re-derives the surface from the session log and rebuilds the whole
+tree. So:
 
-- 会话恢复、换进程、agent 自己折叠过——面板看到的都一致；
-- 检查框的含义永远是"模型实际会收到什么"，而不是"插件上次记住了什么"；
-- 插件卸载后日志依然自洽，harness 自己就能正确重放。
+- resuming a session, switching processes, or the agent having folded something itself all look
+  identical to the panel;
+- a checkbox always means "what the model will actually receive", never "what the plugin
+  remembered last time";
+- after the plugin is removed the log is still self-consistent and harness replays it correctly.
 
-### 2. 工具调用与结果是**原子**的
+### 2. Tool calls and results are atomic
 
-provider 拒绝两种残缺形态：有 `tool-call` 却没有对应结果，或者有结果却没有对应调用。
-所以折叠区间会被自动扩展到完整的工具调用组；唯一的例外是**单独折叠一个工具结果**——此时插件发出的是一个
-`tool/result` 替换（只改内容，不改 `toolCallId`），调用关系完整保留。
+Providers reject two malformed shapes: a `tool-call` with no matching result, and a result with no
+matching call. Folding spans are therefore extended to whole tool-call groups. The one exception is
+**folding a single tool result**, where the plugin emits a `tool/result` replacement (content only —
+`toolCallId` is untouched), so the pairing stays complete.
 
-### 3. 展开是"单节点"的，插件对它诚实
+### 3. Expanding is single-node only, and the plugin says so
 
-表层替换是 N→1 的，而且 `assistant/message` 永远不能作为替换节点（它内嵌 provider stream，harness 禁止它携带
-`sourceEventSeqs`）。因此**多节点折叠无法完美还原**。插件的做法是：
+Surface replacement is N→1, and an `assistant/message` can never be a replacement node (it embeds a
+provider stream, and harness forbids it from carrying `sourceEventSeqs`). So **a multi-node fold
+cannot be restored perfectly**. The plugin's contract:
 
-- 折叠只覆盖**一个**事件时（最常见的单条工具结果）→ 原角色、原内容**逐字还原**；
-- 折叠覆盖多个事件时 → 还原为**一条带分隔符的完整重放消息**（文本无损，角色被压平，并在开头写明这一点）。
+- a fold covering **one** event (the most common case: a single tool result) → restored **verbatim**,
+  same role, same content;
+- a fold covering several events → restored as **one full replay message with separators** (text is
+  lossless, roles are flattened, and the message says so at the top).
 
-面板会明确标注这一点，不会假装能"撤销"。
+The panel labels this explicitly instead of pretending it can "undo".
 
-## 安装
+## Install
 
 ```powershell
-cd D:\deepseek_harness\dsh-context-assembler
+# from a local checkout
 npm install; npm run build
-dsh plugin --profile web add D:\deepseek_harness\dsh-context-assembler
+dsh plugin --profile web add <path-to-this-repo>
+
+# or straight from git
+dsh plugin --profile web add https://github.com/catsenior507/dsh-context-assembler
 ```
 
-装好后需要**重启 dsh web** 才会加载（守望者面板的"重启"按钮即可）。
+Then **restart dsh web** so it loads (the watchdog panel's restart button is the quick way).
 
-## 使用
+## Using it
 
-### 面板
+### The panel
 
-页面右下角出现 **组装式上下文** 悬浮按钮（快捷键 `Ctrl+Shift+K`）。点开后：
+A floating **Assembled Context** button appears in the bottom-right corner (shortcut `Ctrl+Shift+K`).
+Opening it gives you:
 
-- **会话选择器**：默认选中最近活动的会话；子代理会话以下拉项的形式单独列出（它们有独立的表层）；
-- **统计条**：模型可见 / 已折叠 / 原始总量 / 省下的 token / 表层节点数 / 组装区数；
-- **树**：轮 → 步骤 → 系统提示 / 用户消息 / 助手消息 / 工具结果；
-  工具节点下面嵌套它派生的**子代理会话**；折叠后的节点以"组装区"呈现，展开可见它覆盖的原始事件；
-- **每行都自带"这一步是什么"**：轮与步骤行的序号后面跟着**该区域的第一句实质内容**，所以折叠状态下也能一眼看出这一步在干什么：
+- **Session picker** — defaults to the most recently active session; subagent sessions are listed
+  separately, because they have their own surface.
+- **Stats bar** — visible / folded / original tokens, tokens saved, surface nodes, assembly regions.
+- **The tree** — turn → step → system prompt / user message / assistant message / tool result. A tool
+  node nests the **subagent sessions** it spawned. A folded node appears as an "assembly region" that
+  expands to the raw events it covers.
+- **Every row says what the step *was***, even when folded — the turn and step rows carry the first
+  line of real content from that region:
 
   ```text
-  ▾ turn  第 3 轮  还有每次各个步骤除了写步骤号还要在后面写这一行上下文的第一行…   16.5k t
-    ▸ step  步骤 3.1  还有每次各个步骤除了写步骤号还要在后面写这一行上下文的第一行…  4.0k t
-    ▸ step  步骤 3.2  工具 run_code · type updated 8421                          355 t
-    ▸ step  步骤 3.5  Now update the panel to render `node.hint`, add CSS for…    1.5k t
+  ▾ turn  3   refactor the retry loop and stop the double-charge…      16.5k t
+    ▸ step  3.1  refactor the retry loop and stop the double-charge…   4.0k t
+    ▸ step  3.2  tool run_code · type updated 8421                     355 t
+    ▸ step  3.5  Now update the panel to render `node.hint`, add CSS…  1.5k t
   ```
 
-  取法是"按行序第一个非系统节点的第一行"，其中有两条规则值得说明：**跳过渲染后的系统提示词**，
-  因为它每个会话都一样（约 1.2k token），拿它当标签等于没标签，只在区域内空无一物时才回退到它；
-  **跳过工具调用标记行**（`<run_code {"code": …}>`），否则纯工具调用的一步会显示成一大段 JSON 参数，
-  比不显示更糟——此时改用工具结果的第一行并冠上工具名（`工具 run_code · …`）。
+  The rule is "the first line of the first non-system node in line order", with two exceptions worth
+  stating: **the rendered system prompt is skipped** (it is ~1.2k tokens and identical in every
+  session, so using it as a label is the same as having no label — it is only the fallback when a
+  region is otherwise empty), and **tool-call marker lines are skipped** (`<run_code {"code": …}>`),
+  otherwise a tool-only step would display a wall of JSON arguments, which is worse than nothing;
+  in that case the tool result's first line is used, prefixed with the tool name.
+- **A three-state switch on every row** — `full` / `key` / `off`. Summary rows (turn, step, subagent)
+  offer the same for their entire subtree.
+- **Toolbar** — `tool results → key`, `assistant messages → key`, `everything off`, `expand all`.
+- **Model view** — the messages the model is actually receiving right now, in derived order.
+- **Presets** — rules (match on kind / tool name / failed / label regex → mode + digest template).
+- **Footer** — `Preview` (dry-run, writes nothing) and `Apply` (appends to the session log).
 
-- **每行三态开关**：`原文` / `关键` / `移出`；汇总行（轮、步骤、子代理）提供整棵子树的一键操作；
-- **工具条**：`工具结果 → 关键`、`助手消息 → 关键`、`全部移出`、`全部展开`；
-- **模型视图**：按派生顺序列出模型当前真正收到的消息；
-- **预设**：规则列表（匹配 种类 / 工具名 / 是否失败 / 标签正则 → 模式 + 摘要模板）；
-- **底部**：`预览`（dry-run，不写日志）与 `应用`（写入会话日志）。
+Every checkbox lives in browser memory until you press **Apply**.
 
-面板里的所有勾选都只存在于浏览器内存中，只有按下**应用**才会追加事件到会话日志。
+### The agent-side tool `context_assembler`
 
-### Agent 侧工具 `context_assembler`
+Registered for the model, with four actions:
 
-注册给模型的工具，四个动作：
-
-| action | 作用 |
+| action | effect |
 | --- | --- |
-| `tree` | 读取上下文树：每行的 `surfaceSeq`、种类、当前模式、token 估算 |
-| `set` | 按 `surfaceSeq` 批量改模式；`digest` 由模型自己撰写；`dryRun` 可预览 |
-| `preset` | 为当前会话写入规则预设，供用户在面板里一键应用 |
-| `messages` | 查看模型当前实际收到的消息与 token 总量 |
+| `tree` | read the context tree: each row's `surfaceSeq`, kind, current mode, estimated tokens |
+| `set` | change modes by `surfaceSeq`; the `digest` is written by the model itself; `dryRun` previews |
+| `preset` | write rule presets for this session, for the user to apply with one click |
+| `messages` | inspect the messages the model is actually receiving, with token totals |
 
-这让"预制上下文"成为可能：agent 在子任务成功交付后、或在某个报错已被排除后，
-自己把那段历史折叠成一句结论，而不是等阈值触发一次它无法控制的压缩。
+This is what makes **pre-authored context** possible: after a sub-task ships, or after an error has
+been ruled out, the agent folds that history into a one-line conclusion itself, instead of waiting for
+a threshold to fire a compaction it does not control.
 
-### 配置（profile 行的 `config`）
+### Configuration (the profile row's `config`)
 
 ```yaml
 - id: ui-context-assembler
   name: '@dsh-external/dsh-client-plugin-context-assembler'
   config:
-    port: 4799                 # 没有 webServer 时插件的本地 API 端口
-    offMarker: "（{count} 项已移出上下文，约 {tokens} tokens）"  # 设为 "" 则移出模式真正零 token
-    digestHeadLines: 12        # 自动摘要保留的头部行数
-    digestTailLines: 4         # 自动摘要保留的尾部行数
-    digestMaxChars: 6000       # 单条摘要的字符上限
-    exposeTool: true           # 是否注册 context_assembler 工具
+    port: 4799                 # loopback API port when no webServer is available
+    offMarker: "（{count} items removed from context, ~{tokens} tokens）"  # set to "" for a truly zero-token off
+    digestHeadLines: 12        # head lines kept by the automatic digest
+    digestTailLines: 4         # tail lines kept by the automatic digest
+    digestMaxChars: 6000       # per-digest character cap
+    exposeTool: true           # register the context_assembler tool
 ```
 
-预设规则里的 `auto: true` 会让规则在每轮（`turn/end`）结束时自动应用；内置模板全部默认关闭。
+A preset rule with `auto: true` applies itself at the end of every turn (`turn/end`). Every built-in
+template ships disabled.
 
-## 自动摘要（"只保留关键部分"）是怎么写的
+## How the automatic digest is written
 
-没有指定 `digest` 时，宿主用一条刻意机械的规则生成摘要：保留**结论**（成员、是否失败）、
-正文的**前 N 行**（通常说明发生了什么）与**后 M 行**（通常说明结果），中间替换为
-`…（省略 K 行）…`——这样模型既知道被省略了，也知道省略了多少。
+When no `digest` is supplied, the host generates one with a deliberately mechanical rule: keep the
+**conclusion** (member count, failure state), the **first N lines** of the body (usually what
+happened) and the **last M lines** (usually the outcome), and replace the middle with
+`… (K lines omitted) …` — so the model knows both that something was omitted and how much.
 
-而 agent 通过工具传 `digest` 时，摘要就是模型自己写的语义总结，这也是"预制上下文"最有价值的部分。
+When the agent passes a `digest` through the tool, the summary is the model's own semantic
+conclusion — which is the most valuable part of pre-authored context.
 
-## 代码结构
+## Repository layout
 
-| 文件 | 职责 |
+| File | Responsibility |
 | --- | --- |
-| `src/host/surface.ts` | 表层折叠与逐节点消息投影（纯函数，浏览器/Node 通用） |
-| `src/host/tree.ts` | 日志 → 上下文树（轮/步骤/工具/子代理分组、状态与 token 统计） |
-| `src/host/planner.ts` | 装配模式 → 表层替换操作（分组合并、工具配对修复、摘要渲染、展开） |
-| `src/host/service.ts` | 宿主编排：读树、提交计划、预设持久化、子代理挂载 |
-| `src/host/api.ts` | HTTP 接口（webServer 路由 / 独立端口两种载体） |
-| `src/host/tool.ts` | `context_assembler` 工具定义（原始 JSON Schema） |
-| `src/index.ts` | 插件入口（cordis `inject`、两条装配路径、可选自动预设） |
-| `src/client/` | 浏览器面板（React，来自 shell 模块表） |
+| `src/host/surface.ts` | surface folding and per-node message projection (pure functions, browser/Node) |
+| `src/host/tree.ts` | log → context tree (turn/step/tool/subagent grouping, state and token stats) |
+| `src/host/planner.ts` | assemble modes → surface replace ops (group merging, tool-pair repair, digest rendering, expansion) |
+| `src/host/service.ts` | host orchestration: read the tree, commit plans, persist presets, mount subagents |
+| `src/host/api.ts` | HTTP surface (webServer route, or its own loopback port) |
+| `src/host/tool.ts` | the `context_assembler` tool definition (raw JSON Schema) |
+| `src/index.ts` | plugin entry (cordis `inject`, both assembly paths, optional auto-presets) |
+| `src/client/` | the browser panel (React, from the shell module table) |
 
-### 三个客户端约束
+## Constraints worth knowing
 
-**样式表文件名是承重的。** 外部插件的客户端包共用同一份构建预设，它把每张样式表按"相对仓库根"的虚拟 id 取哈希，再拼进每个类名（`[hash]_[local]`）。所有把样式表命名为 `src/client/styles.module.css` 的插件因此拿到**同一个哈希前缀**——本插件的旧构建与 igem-manager 插件都产出了 `._0K34_a_launcher`，对方的 52×52 圆形图标规则把这里的启动器压成了圆形、文字溢出；反过来，本表里那些通用类名（.panel / .button / .row / .label / .title / .header / .footer / .preview / .section / .mode / .tag / .select）也在污染对方的界面（实测双方共有 7 个同名局部类：launcher、panel、title、spacer、row、select、empty）。
+### Client-side
 
-把样式表改名为 `context-assembler.module.css` 就得到独有的哈希，且**不牺牲预设的可移植性**（改成绝对路径哈希也能修，但会破坏可复现构建）。浮层控件还显式写死 width/height/box-sizing/white-space，因为它和整页所有插件的全局 button 规则共处。
+**The stylesheet filename is load-bearing.** External plugin client packages share one build preset
+that hashes each stylesheet by a "relative to repo root" virtual id and prefixes every class name with
+it (`[hash]_[local]`). Every plugin that names its stylesheet `src/client/styles.module.css` therefore
+gets the **same hash prefix** — an earlier build of this plugin and the `igem-manager` plugin both
+produced `._0K34_a_launcher`, and that plugin's 52×52 round-icon rule squashed this launcher into a
+circle with overflowing text. In the other direction, the generic class names in that stylesheet
+(`.panel`, `.button`, `.row`, `.label`, `.title`, `.header`, `.footer`, `.preview`, `.section`,
+`.mode`, `.tag`, `.select`) were polluting *its* interface — the two builds shared seven local class
+names: launcher, panel, title, spacer, row, select, empty.
 
-### 两个宿主侧约束
+Renaming the stylesheet to `context-assembler.module.css` yields a unique hash **without sacrificing
+preset portability** (hashing by absolute path would also fix it, but breaks reproducible builds).
+Overlay controls also hard-set width/height/box-sizing/white-space, because they coexist with a
+global `button` rule from every plugin on the page.
 
-1. **不能 import `@deepseek-ai/*`**。外部插件的 Node 半边只能解析 `cordis` 与自己的依赖，
-   所以本插件用局部接口"鸭子类型"地描述用到的服务，并在 `surface.ts` 里重述了 harness 的两条折叠规则。
-   这两条规则都是日志的纯函数，因此重述不会引入状态漂移。
-2. **cordis 要求声明 `inject`**。`ctx.sessions` / `ctx.tools` 必须在模块级 `export const inject` 里声明，
-   否则 apply 阶段直接抛 `cannot get property "x" without inject`；同时**不能有 default export**，
-   否则 cordis 会取 `module.default` 而丢掉具名的 `inject`。
+### Host-side
 
-## 测试
+1. **No `@deepseek-ai/*` imports.** An external plugin's Node half can only resolve `cordis` and its
+   own dependencies, so this plugin describes the services it uses structurally and restates harness's
+   two folding rules in `surface.ts`. Both rules are pure functions of the log, so restating them
+   cannot introduce state drift.
+2. **cordis requires a declared `inject`.** `ctx.sessions` / `ctx.tools` must be declared in a
+   module-level `export const inject`, or the apply phase throws
+   `cannot get property "x" without inject`. There must also be **no default export**, or cordis takes
+   `module.default` and loses the named `inject`.
+
+## Tests
 
 ```powershell
 npm test        # node --test test/context.test.ts
 ```
 
-测试跑在**真实的** `@deepseek-ai/dsh-session` 上：`Session` 实例负责表层折叠，
-`deriveMessages()` 负责派生历史。所以测试通过意味着插件编译出的操作 harness 真的接受，
-而且模型看到的内容真的变了——而不是插件自说自话。
+The tests run against the **real** `@deepseek-ai/dsh-session`: a `Session` instance does the surface
+folding and `deriveMessages()` derives the history. Passing therefore means the ops this plugin
+compiles are ones harness actually accepts, and that what the model sees really changed — not the
+plugin agreeing with itself.
 
-覆盖：表层折叠、token 估算、树分组与顺序保序、单工具结果折叠（配对不破）、
-系统提示词保护、工具配对自动扩展、折叠 → 展开的往返、空计划不产生操作。
+Coverage: surface folding, token estimation, tree grouping and order preservation, single tool-result
+folding (pairing intact), system-prompt protection, automatic tool-pair extension, fold → expand
+round-trips, and empty plans producing no ops.
 
-## 打开任何一段历史对话
+## Opening any past conversation
 
-Harness 只在**有人打开某个对话时**才把它拉进活动会话表，所以只读活动会话的面板会在你重启之后"看不见"过去所有对话——这正是最初那个"重启后找不到之前的上下文"。
+Harness only pulls a conversation into the active session table **when someone opens it**, so a panel
+that only reads active sessions "cannot see" any of your past conversations after a restart — which is
+exactly the original "my assembled context disappeared" complaint.
 
-现在有两件事解决了它：
+Two things fixed it:
 
-**1. 每个对话标题旁边多了一个小图标。** 点它就直接把那段对话装进面板，**不会切换你当前正在聊的对话、也不会 fork 它**。图标靠读该行元素的 React fiber props 拿到 session id——侧边栏不往 DOM 里写 id，而 class 名是皮肤自己的，所以这是唯一跨皮肤稳定的来源。
+**1. A small icon next to every conversation title.** Clicking it loads that conversation into the
+panel **without switching the conversation you are in and without forking it**. The icon reads the
+session id from the row element's React fiber props — the sidebar does not write ids into the DOM, and
+class names belong to the skin, so this is the only cross-skin stable source.
 
-**2. 历史对话是直接读磁盘的。** 宿主半边用 harness 自己的 `ctx.sessionPersistence.open(id, 'read')` 读日志：`read` 不夺取所有权，另一个进程正握着这个会话也照样能读。所以面板能算出它的表层、token 账、折叠历史。
+**2. Past conversations are read straight from disk.** The host half uses the harness
+`session-persistence` service in `read` mode (no ownership, no fork) to decompress and parse the stored
+log. Session records themselves hold only a header and a file size — **neither the title nor the event
+count is in them** (the title comes from a `session/title` event; the count requires counting events).
+So the picker initially showed "0 events, empty title", which reads like data loss.
 
-**历史对话是只读的**：应用一次改动意味着往一个活动会话里追加事件，而这里刻意没有活动会话。面板顶部会说明这一点，所有"原文/关键/移出"按钮都会被挡下并解释原因。想改就先在左侧把它打开——但只是想**看看**它到底给模型喂了什么，不需要再打开它了。
+The host now walks each stored conversation's log in the background at mount time, extracts the real
+title, event count and last-activity time, and writes them to
+`$DSH_HOME/context-assembler/sessions-index.json`, using file size for invalidation (a conversation that
+was continued gets re-read). Real output:
 
-### 标题和事件数是从日志里读出来的
-
-存储快照只有 header 和文件大小——**标题和事件数都不在里面**（前者来自 `session/title` 事件，后者要数事件）。所以面板的会话选择器一开始只能显示"0 事件 + 空标题"，那看起来就像数据丢了。
-
-现在宿主会在挂载时后台把每段已存对话的日志读一遍，抽出真实标题、事件数和最后活动时间，写进 `$DSH_HOME/context-assembler/sessions-index.json`，用文件大小做失效判断（对话被继续过就重读）。实测：
-
-```
+```text
 entries: 32 | with a real title: 28
-  ev= 3856  重构支付网关的重试逻辑   [a1b2c3d4]
-  ev=   24  List first two directory entries   [5a9d0847]
-  ev=   19  Reply with single word READY   [e1f25596]
+  ev= 3856  refactor the payment gateway retry logic   [a1b2c3d4]
+  ev=   24  List first two directory entries           [5a9d0847]
+  ev=   19  Reply with single word READY               [e1f25596]
 ```
 
-（上面是脱敏后的样例：真实的会话标题和 id 属于使用者的私人记录，不进公开仓库。）
+(Sample output is anonymised: real conversation titles and ids belong to the user and are not published.)
 
-几个刻意的选择：**后台单飞、不阻塞请求**——列表立刻返回，标题陆续补上；**每条读完就落盘**（不是全读完才写），因为宿主随时可能退出；**写临时文件再改名**，因为这个文件会被重写几十次，而读侧解析失败会退回空表，半个文件就白读了。
+A few deliberate choices: **background and single-flight, never blocking a request** — the list returns
+immediately and titles fill in as they arrive; **each entry is persisted as soon as it is read** (not
+after the whole scan), because the host can exit at any moment; and **write a temp file, then rename**,
+because this file is rewritten dozens of times and a half-written file would parse as an empty table.
 
-有个坑值得记：`warmIndex()` 在插件挂载时跑，但 `sessionPersistence` 服务那时候**不一定已经激活**（和 webServer 一样的时序问题），第一次查会拿到 undefined。所以带了重试。
+One timing trap is worth recording: `warmIndex()` runs when the plugin mounts, but the
+`sessionPersistence` service **is not necessarily active yet** (the same apply-phase timing problem as
+`webServer`), so the first lookup returns undefined. Hence the retry.
 
-（读取中的行会显示文件大小而不是"0 事件"——一段存了几 MB 的对话显示"0 事件"读起来像数据丢了，而不像"还没读完"。）
+(Rows still being read show the file size rather than "0 events" — a conversation of several MB
+displaying "0 events" reads like lost data, not like "not read yet".)
 
-### 那些读不出来的旧日志
+### Logs that cannot be read
 
-有一批对话的日志是 **v0 格式**（`session.jsonl.zstd`，现行是 `session.v3.jsonl.zstd`）。它们读不出标题，一开始我以为是自己的 bug，把失败原因记到行上之后真相很清楚：
+A batch of conversations are in the **v0 format** (`session.jsonl.zstd`; the current one is
+`session.v3.jsonl.zstd`). Their titles cannot be read. At first this looked like a bug in this plugin;
+recording the failure reason on the row made the truth obvious:
 
-```
+```text
 SessionFormatUnsupportedError: subagent/descriptor 0 uses unsupported descriptor version 2;
 source v0 artifact remains unchanged
 ```
 
-**是 harness 自己的迁移拒绝升级它们**——不是权限、不是路径、不是我的读法。这类对话在 harness 里也打不开，所以永远不会有标题。
+**Harness's own migration refuses to upgrade them** — it is not permissions, not the path, not how they
+are read. Those conversations cannot be opened in harness either, so they will never have a title.
 
-它们的处理方式：**不列进选择器**，只在末尾留一行"另有 N 段旧格式对话，harness 自己也无法迁移，已隐藏"。不静默消失，也不伪装成一段没有名字的对话。失败条目每 2 分钟重试一次——哪天 harness 支持了这个迁移，它们会自动回来。
+They are handled by **leaving them out of the picker** and showing one line at the end: "N older-format
+conversations that harness itself cannot migrate are hidden". They do not silently disappear, and they
+are not disguised as a nameless conversation. Failed entries are retried every 2 minutes — if harness
+ever supports that migration, they come back on their own.
 
-## 图标位置
+## Where the launcher sits
 
-右上角那个胶囊按钮以前会正好压在 harness 右侧边栏的头部按钮上（展开/分栏两个键直接点不动）。
+The capsule button used to sit exactly on top of the right sidebar's header buttons (expand and split
+were unclickable).
 
-现在它会**跟着侧边栏让位**：面板每 600ms 量一次右侧边栏，把偏移写进 `--ca-right`，胶囊和面板都读这个变量。边栏收起时是 12px（贴右上角），展开时自动滑到边栏左侧留 12px 间隙。
+It now **moves out of the sidebar's way**: the panel measures the right sidebar every 600ms and writes
+the offset into `--ca-right`; both the capsule and the panel read that variable. Collapsed, it is 12px
+from the top-right corner; expanded, it slides to just left of the sidebar with a 12px gap.
 
-**而且它可以拖。** 这个按钮在每种皮肤里都恰好压住过点什么，位置改成用户自己选、并且记住：
+**And it can be dragged.** This button has overlapped something in every skin, so its position is now
+the user's choice, and it is remembered:
 
-- 拖动到任意位置（超过 5px 才算拖，手抖不会误判）
-- 双击回到默认的右上角
-- 位置存在 `localStorage`，刷新和重启都在
-- 拖完不会误触"打开面板"——浏览器拖拽后仍会补一个 click，那一个被吞掉了
+- drag anywhere (more than 5px counts as a drag, so a shaky click is not mistaken for one)
+- double-click to return to the default top-right corner
+- the position lives in `localStorage` and survives refresh and restart
+- dragging does not accidentally open the panel — the browser still fires a click after a drag, and that
+  one is swallowed
 
-实测：`{x:1443,y:10}` → 拖到 `{x:1023,y:669}` → 刷新后仍在 `{x:1023,y:670}`，拖动那次没有打开面板，普通点击仍然正常打开。
+Detecting "which element is the sidebar" had its own trap worth recording: a skin paints a 484×920
+decorative image along the right edge, which is also "against the right edge, very tall, very wide", so
+the first version mistook it for the sidebar and pushed the capsule 500px into the middle of the chat
+area. The current test requires it to **also touch the top** (`top <= 12`), excludes
+`IMG/PICTURE/VIDEO/CANVAS/SVG`, and treats invisibility as "collapsed" — the sidebar collapses by
+translating off-screen plus `visibility: hidden`, not by unmounting.
 
-判断"哪个元素是侧边栏"这件事本身踩过坑，值得记一笔：皮肤在右边缘铺了一张 484×920 的装饰画，它同样"贴着右边缘、很高、很宽"，于是第一版把它当成了侧边栏，把胶囊推到了聊天区中间 500px 处。现在要求**同时贴顶**（`top <= 12`）、排除 `IMG/PICTURE/VIDEO/CANVAS/SVG`、并要求不可见即视为"已收起"——边栏是靠 translate 出屏 + `visibility: hidden` 收起的，不是卸载。
+## Durability: what survives a restart
 
-## 持久性：重启之后还剩什么
-
-先说结论，都有实测依据：
-
-| 状态 | 存在哪 | 重启后 |
+| State | Lives in | After restart |
 | --- | --- | --- |
-| **已应用的折叠** | 会话日志里的 `surfaceOp: replace` 事件 | ✅ 活着 |
-| 预设规则 | `$DSH_HOME/context-assembler/presets.json` | ✅ 活着 |
-| 未应用的改动（草稿） | `$DSH_HOME/context-assembler/drafts.json` | ✅ 活着（见下） |
-| 面板视图（选中会话、展开了哪些行） | 浏览器 `localStorage` | ✅ 活着 |
+| **Applied folds** | `surfaceOp: replace` events in the session log | survives |
+| Preset rules | `$DSH_HOME/context-assembler/presets.json` | survives |
+| Unapplied changes (drafts) | `$DSH_HOME/context-assembler/drafts.json` | survives |
+| Panel view (selected session, expanded rows) | browser `localStorage` | survives |
 
-折叠是最容易被误解的一项，所以专门验证过两次：一次是把测试会话的持久化日志解压出来，确认 `REPLACE 25-25` 这个替换事件确实落了盘；一次是用真实的 `Session` API 走一遍"快照 → 重新构造"的恢复路径，确认恢复后 `deriveMessages()` 仍然是被折叠过的样子。**Harness 本身不会丢折叠。**
+Folds are the most misunderstood entry, so they were verified twice: once by decompressing a test
+session's persisted log and confirming the `REPLACE 25-25` event really landed on disk, and once by
+driving the real `Session` API through a snapshot → reconstruct cycle and confirming that
+`deriveMessages()` is still the folded shape afterwards. **Harness itself never loses a fold.**
 
-### 那么重启到底丢了什么
+### So what *was* lost on restart
 
-三件事，都已经修掉：
+Three things, all now fixed:
 
-**1. 未应用的改动只活在浏览器内存里。** 面板里的勾选在按下「应用」之前不会写日志——这是有意的，但重启会把它们全部丢掉，看起来就像"组装没了"。现在每次改动都会在 700ms 后自动存成**草稿**（宿主侧 `drafts.json`），重新打开页面会自动恢复成"待应用 N 处"，页脚也会写明"已自动保存，重启后仍在"。草稿本身不改变模型读到的东西，只有「应用」才会。
+**1. Unapplied changes lived only in browser memory.** Checkboxes do not touch the log until you press
+Apply — deliberately — but a restart threw them all away, which looks exactly like "my assembly is
+gone". Every change is now auto-saved as a **draft** (host-side `drafts.json`) after 700ms; reopening the
+page restores it as "N changes pending", and the footer says it was auto-saved and will survive a
+restart. A draft does not change what the model reads — only Apply does.
 
-**2. 会话 id 会变，而我的状态是按会话 id 存的。** 重启之后继续一个旧会话时，harness 会把它 **fork 成一个新 id**（实测：子会话的 `parentSession` 指向父会话，创建时间距离那次重启只有 55 秒）。预设和草稿因此会"跟着旧 id 一起消失"。现在两者都沿 **lineage** 继承：会话自己没有条目时，向上找最近的祖先条目；显式保存空列表才算"我就是要清空"。
+**2. Session ids change, and the state was keyed by session id.** When you continue an old conversation
+after a restart, harness **forks it into a new id** (measured: the child's `parentSession` points at the
+parent, created 55 seconds after that restart). Presets and drafts therefore "disappeared along with the
+old id". Both are now inherited along the **lineage**: when a session has no entry of its own, the
+nearest ancestor entry is used; explicitly saving an empty list is what means "I really do want it
+cleared".
 
-**3. 一个真 bug：折叠识别漏了一半。** 单个工具结果的折叠必须保持 `tool/result` 形态（harness 强制要求，否则模型会看到一个没有对应调用的工具结果），而那个校验同时强制**除内容以外所有字段与原事件逐字节相同——`source` 也在内**。所以工具结果折叠**没法**像 `user/message` 折叠那样在 `source.plugin` 上盖自己的名字。旧代码只认后者，后果是：重启后"组装区"计数为 0、一个 `移出` 折叠会被读成 `关键`、操作历史里看不到它。**这看起来就是"我的组装被改掉了/丢了"。** 现在两种形态都识别：`user/message` 折叠看 `source.summary`，工具结果折叠看正文里的 `⟨assembled:key|off⟩` 头（本来就会写上去）。
+**3. A real bug: fold detection missed half the cases.** Folding a single tool result must keep the
+`tool/result` shape (harness enforces it, or the model sees a tool result with no matching call), and
+that validation also requires **every field except the content to be byte-identical to the original —
+`source` included**. So a tool-result fold **cannot** stamp its name into `source.plugin` the way a
+`user/message` fold does. The old code only recognised the latter, so after a restart: the "assembly
+region" count was 0, an `off` fold was read back as `key`, and it did not appear in the operation
+history. **Which looks exactly like "my assembly was changed / lost".** Both shapes are now recognised:
+a `user/message` fold is identified by `source.summary`, a tool-result fold by the
+`⟨assembled:key|off⟩` header written into its body.
 
-### 还有一条防线
+### One more safety net
 
-插件在 web profile 里走的是自己的 loopback 端口（harness 的 `webServer` 服务在 apply 阶段往往还没激活，读不到）。固定端口恰好是重启时最脆弱的地方：旧宿主可能还占着 socket。现在宿主会在 `port` 起算的 8 个端口里挑一个可用的，面板探测同一段范围，连不上时的报错也会直接说"宿主半边没加载，检查 profile 里是否还有 `ui-context-assembler` 这一行"，而不是静默空白。
+Under the web profile the plugin uses its own loopback port (harness's `webServer` service is usually
+not yet active during apply). A fixed port is exactly what is most fragile across restarts: the old host
+may still hold the socket. The host now picks a free port among the 8 starting at `port`, the panel
+probes the same range, and a failed connection reports "the host half did not load; check that
+`ui-context-assembler` is still in the profile" instead of going silently blank.
 
-## 已知限制
+## Known limitations
 
-- **多节点折叠无法逐字还原**（上面"三个关键设计决定"第 3 条），这是 harness 替换语义的结构性限制，不是实现偷懒；
-- **摘要 token 是估算值**：按 CJK 1 token/字、ASCII 4 字符/token 的启发式计算，用于排序"哪块值得折叠"，
-  不是计费口径；
-- **子代理会话要在会话选择器里切换过去单独装配**：它们拥有独立表层，父会话里的子代理节点只用于导航；
-- **表层第 0 号节点（系统提示词）不可折叠**：harness 会拒绝覆盖它的替换，面板把该行标为不可切换；
-- 折叠区不会自动过期：面板不会替你重新决定，这是有意的。
+- **A multi-node fold cannot be restored verbatim** (design decision 3). This is a structural property of
+  harness's replace semantics, not a shortcut in the implementation.
+- **Digest tokens are estimates**: computed with a CJK 1 token/char, ASCII 4 chars/token heuristic, for
+  ranking *which* region is worth folding — not a billing figure.
+- **Subagent sessions must be selected in the picker to be assembled separately**: they own an
+  independent surface, and a subagent node in the parent session is for navigation only.
+- **Surface node 0 (the system prompt) cannot be folded**: harness rejects a replacement covering it, and
+  the panel marks that row as non-toggleable.
+- **Folded regions do not expire on their own**: the panel will not re-decide for you. That is deliberate.
 
+## License
+
+MIT — see [LICENSE](LICENSE).

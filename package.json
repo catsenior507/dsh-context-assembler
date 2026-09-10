@@ -64,6 +64,8 @@
     "cordis.patch.yml",
     "src",
     "README.md",
+    "README.zh.md",
+    "assets",
     "LICENSE"
   ]
 }

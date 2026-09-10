@@ -1,0 +1,347 @@
+<div align="center">
+
+# 组装式上下文 · Assembled Context
+
+**把「上下文有多长」变成「上下文里放什么」。**
+
+一个 DeepSeek Harness 客户端插件：在会话日志之上维护一棵可勾选的树，
+由你——以及 agent 自己——决定下一次请求里到底放什么。
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-3DA639.svg)](LICENSE)
+[![DeepSeek Harness plugin](https://img.shields.io/badge/DeepSeek%20Harness-client%20plugin-4D6BFE.svg)](#安装)
+[![version](https://img.shields.io/github/package-json/v/catsenior507/dsh-context-assembler?color=4D6BFE)](package.json)
+[![stars](https://img.shields.io/github/stars/catsenior507/dsh-context-assembler?color=4D6BFE)](https://github.com/catsenior507/dsh-context-assembler/stargazers)
+
+[English](README.md) · **简体中文**
+
+</div>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/assembled-context-dark.svg">
+  <img alt="会话日志折叠成上下文树，以及模型实际读到的组装结果" src="assets/assembled-context-light.svg">
+</picture>
+
+---
+
+## 它解决什么问题
+
+Harness 只有两种上下文状态：**全量**，或者被 `dsh-compaction-basic` 自动压缩成一条你看不到、
+也无法调整的摘要。长任务里这很糟：一次 `grep` 的 4000 token 输出、一段已经排查完的报错、
+一个已经成功交付的子任务，都会一直占着窗口，直到某个阈值触发一次你既无法检视、也无法撤销的压缩。
+
+这个插件把「上下文」从**一个长度**变成**一组决定**。
+
+## 核心机制：表层与装配模式
+
+Harness 的会话是一条只追加的事件日志，模型实际读到的是它的**表层投影**：
+`system/message`、`user/message`、`assistant/message`、`tool/result` 四类事件按顺序构成表层，
+`session.deriveMessages()` 把表层折叠成发给模型的消息数组。
+
+Harness 给生产者只有**一种**结构操作：
+
+```text
+{ op: "replace", startSeq, endSeq }
+```
+
+它把**当前表层顺序**上 `[startSeq, endSeq]` 这一段替换成替换事件自己的**一条**消息节点，
+其余节点原地不动。压缩就是这么做的。本插件把同一个操作变成了一个可交互的编辑器：
+
+| 模式 | 含义 | 表层效果 |
+| --- | --- | --- |
+| **原文** `full` | 原样保留 | 不做任何替换 |
+| **关键** `key` | 只保留关键部分 | 把整段折叠成**一条摘要消息**（agent 或宿主撰写） |
+| **移出** `off` | 移出上下文 | 把整段折叠成一条极短的标记（可配置为零 token） |
+
+因为只有被折叠的区间会发生替换、其它节点位置不变，所以**未触碰的前缀仍然可以被 provider 的 KV cache 复用**。
+
+## 三个关键设计决定
+
+### 1. 树是日志的**读取**，不是插件自己的状态
+
+每次打开面板都从会话日志重新折叠出表层、重建整棵树。所以：
+
+- 会话恢复、换进程、agent 自己折叠过——面板看到的都一致；
+- 检查框的含义永远是「模型实际会收到什么」，而不是「插件上次记住了什么」；
+- 插件卸载后日志依然自洽，harness 自己就能正确重放。
+
+### 2. 工具调用与结果是**原子**的
+
+provider 拒绝两种残缺形态：有 `tool-call` 却没有对应结果，或者有结果却没有对应调用。
+所以折叠区间会被自动扩展到完整的工具调用组；唯一的例外是**单独折叠一个工具结果**——
+此时插件发出的是一个 `tool/result` 替换（只改内容，不改 `toolCallId`），调用关系完整保留。
+
+### 3. 展开是「单节点」的，插件对它诚实
+
+表层替换是 N→1 的，而且 `assistant/message` 永远不能作为替换节点（它内嵌 provider stream，
+harness 禁止它携带 `sourceEventSeqs`）。因此**多节点折叠无法完美还原**。插件的做法是：
+
+- 折叠只覆盖**一个**事件时（最常见的单条工具结果）→ 原角色、原内容**逐字还原**；
+- 折叠覆盖多个事件时 → 还原为**一条带分隔符的完整重放消息**（文本无损，角色被压平，
+  并在开头写明这一点）。
+
+面板会明确标注这一点，不会假装能「撤销」。
+
+## 安装
+
+```powershell
+# 从本地目录
+npm install; npm run build
+dsh plugin --profile web add <本仓库路径>
+
+# 或直接从 git 安装
+dsh plugin --profile web add https://github.com/catsenior507/dsh-context-assembler
+```
+
+装好后需要**重启 dsh web** 才会加载（守望者面板的「重启」按钮最快）。
+
+## 使用
+
+### 面板
+
+页面右下角出现 **组装式上下文** 悬浮按钮（快捷键 `Ctrl+Shift+K`）。点开后：
+
+- **会话选择器**：默认选中最近活动的会话；子代理会话以下拉项的形式单独列出（它们有独立的表层）；
+- **统计条**：模型可见 / 已折叠 / 原始总量 / 省下的 token / 表层节点数 / 组装区数；
+- **树**：轮 → 步骤 → 系统提示 / 用户消息 / 助手消息 / 工具结果；工具节点下面嵌套它派生的
+  **子代理会话**；折叠后的节点以「组装区」呈现，展开可见它覆盖的原始事件；
+- **每行都自带「这一步是什么」**：轮与步骤行的序号后面跟着**该区域的第一句实质内容**，
+  所以折叠状态下也能一眼看出这一步在干什么：
+
+  ```text
+  ▾ turn  第 3 轮  重构支付网关的重试逻辑并止住重复扣款…            16.5k t
+    ▸ step  步骤 3.1  重构支付网关的重试逻辑并止住重复扣款…          4.0k t
+    ▸ step  步骤 3.2  工具 run_code · type updated 8421              355 t
+    ▸ step  步骤 3.5  Now update the panel to render `node.hint`…    1.5k t
+  ```
+
+  取法是「按行序第一个非系统节点的第一行」，其中有两条规则值得说明：**跳过渲染后的系统提示词**
+  （它每个会话都一样、约 1.2k token，拿它当标签等于没标签，只在区域内空无一物时才回退到它）；
+  **跳过工具调用标记行**（`<run_code {"code": …}>`），否则纯工具调用的一步会显示成一大段 JSON 参数，
+  比不显示更糟——此时改用工具结果的第一行并冠上工具名。
+- **每行三态开关**：`原文` / `关键` / `移出`；汇总行（轮、步骤、子代理）提供整棵子树的一键操作；
+- **工具条**：`工具结果 → 关键`、`助手消息 → 关键`、`全部移出`、`全部展开`；
+- **模型视图**：按派生顺序列出模型当前真正收到的消息；
+- **预设**：规则列表（匹配 种类 / 工具名 / 是否失败 / 标签正则 → 模式 + 摘要模板）；
+- **底部**：`预览`（dry-run，不写日志）与 `应用`（写入会话日志）。
+
+面板里的所有勾选都只存在于浏览器内存中，只有按下**应用**才会追加事件到会话日志。
+
+### Agent 侧工具 `context_assembler`
+
+注册给模型的工具，四个动作：
+
+| action | 作用 |
+| --- | --- |
+| `tree` | 读取上下文树：每行的 `surfaceSeq`、种类、当前模式、token 估算 |
+| `set` | 按 `surfaceSeq` 批量改模式；`digest` 由模型自己撰写；`dryRun` 可预览 |
+| `preset` | 为当前会话写入规则预设，供用户在面板里一键应用 |
+| `messages` | 查看模型当前实际收到的消息与 token 总量 |
+
+这让「预制上下文」成为可能：agent 在子任务成功交付后、或在某个报错已被排除后，
+自己把那段历史折叠成一句结论，而不是等阈值触发一次它无法控制的压缩。
+
+### 配置（profile 行的 `config`）
+
+```yaml
+- id: ui-context-assembler
+  name: '@dsh-external/dsh-client-plugin-context-assembler'
+  config:
+    port: 4799                 # 没有 webServer 时插件的本地 API 端口
+    offMarker: "（{count} 项已移出上下文，约 {tokens} tokens）"  # 设为 "" 则移出模式真正零 token
+    digestHeadLines: 12        # 自动摘要保留的头部行数
+    digestTailLines: 4         # 自动摘要保留的尾部行数
+    digestMaxChars: 6000       # 单条摘要的字符上限
+    exposeTool: true           # 是否注册 context_assembler 工具
+```
+
+预设规则里的 `auto: true` 会让规则在每轮（`turn/end`）结束时自动应用；内置模板全部默认关闭。
+
+## 自动摘要（「只保留关键部分」）是怎么写的
+
+没有指定 `digest` 时，宿主用一条刻意机械的规则生成摘要：保留**结论**（成员、是否失败）、
+正文的**前 N 行**（通常说明发生了什么）与**后 M 行**（通常说明结果），中间替换为
+`…（省略 K 行）…`——这样模型既知道被省略了，也知道省略了多少。
+
+而 agent 通过工具传 `digest` 时，摘要就是模型自己写的语义总结，这也是「预制上下文」最有价值的部分。
+
+## 代码结构
+
+| 文件 | 职责 |
+| --- | --- |
+| `src/host/surface.ts` | 表层折叠与逐节点消息投影（纯函数，浏览器/Node 通用） |
+| `src/host/tree.ts` | 日志 → 上下文树（轮/步骤/工具/子代理分组、状态与 token 统计） |
+| `src/host/planner.ts` | 装配模式 → 表层替换操作（分组合并、工具配对修复、摘要渲染、展开） |
+| `src/host/service.ts` | 宿主编排：读树、提交计划、预设持久化、子代理挂载 |
+| `src/host/api.ts` | HTTP 接口（webServer 路由 / 独立端口两种载体） |
+| `src/host/tool.ts` | `context_assembler` 工具定义（原始 JSON Schema） |
+| `src/index.ts` | 插件入口（cordis `inject`、两条装配路径、可选自动预设） |
+| `src/client/` | 浏览器面板（React，来自 shell 模块表） |
+
+## 值得知道的约束
+
+### 三个客户端约束
+
+**样式表文件名是承重的。** 外部插件的客户端包共用同一份构建预设，它把每张样式表按「相对仓库根」
+的虚拟 id 取哈希，再拼进每个类名（`[hash]_[local]`）。所有把样式表命名为 `src/client/styles.module.css`
+的插件因此拿到**同一个哈希前缀**——本插件的旧构建与 igem-manager 插件都产出了 `._0K34_a_launcher`，
+对方的 52×52 圆形图标规则把这里的启动器压成了圆形、文字溢出；反过来，本表里那些通用类名
+（`.panel` / `.button` / `.row` / `.label` / `.title` / `.header` / `.footer` / `.preview` / `.section` /
+`.mode` / `.tag` / `.select`）也在污染对方的界面（实测双方共有 7 个同名局部类：
+launcher、panel、title、spacer、row、select、empty）。
+
+把样式表改名为 `context-assembler.module.css` 就得到独有的哈希，且**不牺牲预设的可移植性**
+（改成绝对路径哈希也能修，但会破坏可复现构建）。浮层控件还显式写死
+width/height/box-sizing/white-space，因为它和整页所有插件的全局 `button` 规则共处。
+
+### 两个宿主侧约束
+
+1. **不能 import `@deepseek-ai/*`**。外部插件的 Node 半边只能解析 `cordis` 与自己的依赖，
+   所以本插件以结构化方式描述用到的服务，并在 `surface.ts` 里重述了 harness 的两条折叠规则。
+   这两条规则都是日志的纯函数，因此重述不会引入状态漂移。
+2. **cordis 要求声明 `inject`**。`ctx.sessions` / `ctx.tools` 必须在模块级 `export const inject` 里声明，
+   否则 apply 阶段直接抛 `cannot get property "x" without inject`；同时**不能有 default export**，
+   否则 cordis 会取 `module.default` 而丢掉具名的 `inject`。
+
+## 测试
+
+```powershell
+npm test        # node --test test/context.test.ts
+```
+
+测试跑在**真实的** `@deepseek-ai/dsh-session` 上：`Session` 实例负责表层折叠，
+`deriveMessages()` 负责派生历史。所以测试通过意味着插件编译出的操作 harness 真的接受，
+而且模型看到的内容真的变了——而不是插件自说自话。
+
+覆盖：表层折叠、token 估算、树分组与顺序保序、单工具结果折叠（配对不破）、
+系统提示词保护、工具配对自动扩展、折叠 → 展开的往返、空计划不产生操作。
+
+## 打开任何一段历史对话
+
+Harness 只在**有人打开某个对话时**才把它拉进活动会话表，所以只读活动会话的面板会在你重启之后
+「看不见」过去所有对话——这正是最初那个「重启后找不到之前的上下文」。
+
+现在有两件事解决了它：
+
+**1. 每个对话标题旁边多了一个小图标。** 点它就直接把那段对话装进面板，**不会切换你当前正在聊的对话、
+也不会 fork 它**。图标靠读该行元素的 React fiber props 拿到 session id——侧边栏不往 DOM 里写 id，
+而 class 名是皮肤自己的，所以这是唯一跨皮肤稳定的来源。
+
+**2. 历史对话是直接读磁盘的。** 宿主半边用 harness 的 `session-persistence` 服务以 `read` 模式
+（不接管、不 fork）解压并解析已存日志。存储快照只有 header 和文件大小——**标题和事件数都不在里面**
+（前者来自 `session/title` 事件，后者要数事件）。所以面板的会话选择器一开始只能显示
+「0 事件 + 空标题」，那看起来就像数据丢了。
+
+现在宿主会在挂载时后台把每段已存对话的日志读一遍，抽出真实标题、事件数和最后活动时间，
+写进 `$DSH_HOME/context-assembler/sessions-index.json`，用文件大小做失效判断（对话被继续过就重读）。实测：
+
+```text
+entries: 32 | with a real title: 28
+  ev= 3856  重构支付网关的重试逻辑   [a1b2c3d4]
+  ev=   24  List first two directory entries   [5a9d0847]
+  ev=   19  Reply with single word READY   [e1f25596]
+```
+
+（上面是脱敏后的样例：真实的会话标题和 id 属于使用者的私人记录，不进公开仓库。）
+
+几个刻意的选择：**后台单飞、不阻塞请求**——列表立刻返回，标题陆续补上；**每条读完就落盘**
+（不是全读完才写），因为宿主随时可能退出；**写临时文件再改名**，因为这个文件会被重写几十次，
+而读侧解析失败会退回空表，半个文件就白读了。
+
+有个坑值得记：`warmIndex()` 在插件挂载时跑，但 `sessionPersistence` 服务那时候**不一定已经激活**
+（和 webServer 一样的时序问题），第一次查会拿到 undefined。所以带了重试。
+
+（读取中的行会显示文件大小而不是「0 事件」——一段存了几 MB 的对话显示「0 事件」
+读起来像数据丢了，而不像「还没读完」。）
+
+### 那些读不出来的旧日志
+
+有一批对话的日志是 **v0 格式**（`session.jsonl.zstd`，现行是 `session.v3.jsonl.zstd`）。
+它们读不出标题，一开始我以为是自己的 bug，把失败原因记到行上之后真相很清楚：
+
+```text
+SessionFormatUnsupportedError: subagent/descriptor 0 uses unsupported descriptor version 2;
+source v0 artifact remains unchanged
+```
+
+**是 harness 自己的迁移拒绝升级它们**——不是权限、不是路径、不是我的读法。
+这类对话在 harness 里也打不开，所以永远不会有标题。
+
+它们的处理方式：**不列进选择器**，只在末尾留一行「另有 N 段旧格式对话，harness 自己也无法迁移，已隐藏」。
+不静默消失，也不伪装成一段没有名字的对话。失败条目每 2 分钟重试一次——
+哪天 harness 支持了这个迁移，它们会自动回来。
+
+## 图标位置
+
+右上角那个胶囊按钮以前会正好压在 harness 右侧边栏的头部按钮上（展开/分栏两个键直接点不动）。
+
+现在它会**跟着侧边栏让位**：面板每 600ms 量一次右侧边栏，把偏移写进 `--ca-right`，
+胶囊和面板都读这个变量。边栏收起时是 12px（贴右上角），展开时自动滑到边栏左侧留 12px 间隙。
+
+**而且它可以拖。** 这个按钮在每种皮肤里都恰好压住过点什么，位置改成用户自己选、并且记住：
+
+- 拖动到任意位置（超过 5px 才算拖，手抖不会误判）
+- 双击回到默认的右上角
+- 位置存在 `localStorage`，刷新和重启都在
+- 拖完不会误触「打开面板」——浏览器拖拽后仍会补一个 click，那一个被吞掉了
+
+判断「哪个元素是侧边栏」这件事本身踩过坑，值得记一笔：皮肤在右边缘铺了一张 484×920 的装饰画，
+它同样「贴着右边缘、很高、很宽」，于是第一版把它当成了侧边栏，把胶囊推到了聊天区中间 500px 处。
+现在要求**同时贴顶**（`top <= 12`）、排除 `IMG/PICTURE/VIDEO/CANVAS/SVG`、并要求不可见即视为「已收起」
+——边栏是靠 translate 出屏 + `visibility: hidden` 收起的，不是卸载。
+
+## 持久性：重启之后还剩什么
+
+| 状态 | 存在哪 | 重启后 |
+| --- | --- | --- |
+| **已应用的折叠** | 会话日志里的 `surfaceOp: replace` 事件 | ✅ 活着 |
+| 预设规则 | `$DSH_HOME/context-assembler/presets.json` | ✅ 活着 |
+| 未应用的改动（草稿） | `$DSH_HOME/context-assembler/drafts.json` | ✅ 活着 |
+| 面板视图（选中会话、展开了哪些行） | 浏览器 `localStorage` | ✅ 活着 |
+
+折叠是最容易被误解的一项，所以专门验证过两次：一次是把测试会话的持久化日志解压出来，
+确认 `REPLACE 25-25` 这个替换事件确实落了盘；一次是用真实的 `Session` API 走一遍
+「快照 → 重新构造」的恢复路径，确认恢复后 `deriveMessages()` 仍然是被折叠过的样子。
+**Harness 本身不会丢折叠。**
+
+### 那么重启到底丢了什么
+
+三件事，都已经修掉：
+
+**1. 未应用的改动只活在浏览器内存里。** 面板里的勾选在按下「应用」之前不会写日志——这是有意的，
+但重启会把它们全部丢掉，看起来就像「组装没了」。现在每次改动都会在 700ms 后自动存成**草稿**
+（宿主侧 `drafts.json`），重新打开页面会自动恢复成「待应用 N 处」，页脚也会写明
+「已自动保存，重启后仍在」。草稿本身不改变模型读到的东西，只有「应用」才会。
+
+**2. 会话 id 会变，而我的状态是按会话 id 存的。** 重启之后继续一个旧会话时，harness 会把它
+**fork 成一个新 id**（实测：子会话的 `parentSession` 指向父会话，创建时间距离那次重启只有 55 秒）。
+预设和草稿因此会「跟着旧 id 一起消失」。现在两者都沿 **lineage** 继承：会话自己没有条目时，
+向上找最近的祖先条目；显式保存空列表才算「我就是要清空」。
+
+**3. 一个真 bug：折叠识别漏了一半。** 单个工具结果的折叠必须保持 `tool/result` 形态
+（harness 强制要求，否则模型会看到一个没有对应调用的工具结果），而那个校验同时强制
+**除内容以外所有字段与原事件逐字节相同——`source` 也在内**。所以工具结果折叠**没法**像
+`user/message` 折叠那样在 `source.plugin` 上盖自己的名字。旧代码只认后者，后果是：重启后
+「组装区」计数为 0、一个 `移出` 折叠会被读成 `关键`、操作历史里看不到它。
+**这看起来就是「我的组装被改掉了/丢了」。** 现在两种形态都识别：`user/message` 折叠看 `source.summary`，
+工具结果折叠看正文里的 `⟨assembled:key|off⟩` 头（本来就会写上去）。
+
+### 还有一条防线
+
+插件在 web profile 里走的是自己的 loopback 端口（harness 的 `webServer` 服务在 apply 阶段往往还没激活，
+读不到）。固定端口恰好是重启时最脆弱的地方：旧宿主可能还占着 socket。现在宿主会在 `port` 起算的
+8 个端口里挑一个可用的，面板探测同一段范围，连不上时的报错也会直接说「宿主半边没加载，
+检查 profile 里是否还有 `ui-context-assembler` 这一行」，而不是静默空白。
+
+## 已知限制
+
+- **多节点折叠无法逐字还原**（上面「三个关键设计决定」第 3 条），这是 harness 替换语义的结构性限制，
+  不是实现偷懒；
+- **摘要 token 是估算值**：按 CJK 1 token/字、ASCII 4 字符/token 的启发式计算，
+  用于排序「哪块值得折叠」，不是计费口径；
+- **子代理会话要在会话选择器里切换过去单独装配**：它们拥有独立表层，父会话里的子代理节点只用于导航；
+- **表层第 0 号节点（系统提示词）不可折叠**：harness 会拒绝覆盖它的替换，面板把该行标为不可切换；
+- 折叠区不会自动过期：面板不会替你重新决定，这是有意的。
+
+## 许可
+
+MIT — 见 [LICENSE](LICENSE)。

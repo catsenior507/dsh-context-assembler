@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="452" viewBox="0 0 1000 452" role="img" aria-label="A session log folded into a context tree, and the assembled messages the model reads.">
+<rect x="0" y="0" width="1000" height="452" fill="#ffffff"/>
+<text x="500" y="30" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="15" fill="#1f2328" text-anchor="middle" font-weight="600">From append-only session log to assembled context</text>
+<rect x="16" y="58" width="300" height="300" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1"/>
+<text x="30" y="84" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="600">1 · Session log</text>
+<text x="30" y="101" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#59636e">append-only, never rewritten</text>
+<line x1="30" y1="110" x2="302" y2="110" stroke="#d8dee4" stroke-width="1"/>
+<rect x="352" y="58" width="300" height="300" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1"/>
+<text x="366" y="84" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="600">2 · Context tree</text>
+<text x="366" y="101" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#59636e">you and the agent choose</text>
+<line x1="366" y1="110" x2="638" y2="110" stroke="#d8dee4" stroke-width="1"/>
+<rect x="688" y="58" width="296" height="300" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1"/>
+<text x="702" y="84" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="600">3 · What the model reads</text>
+<text x="702" y="101" font-family="ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif" font-size="10.5" fill="#59636e">the assembled surface</text>
+<line x1="702" y1="110" x2="970" y2="110" stroke="#d8dee4" stroke-width="1"/>
+<rect x="30" y="112" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="112" width="3" height="30" rx="1.5" fill="#8c959f"/>
+<text x="41" y="131" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">system/message</text>
+<text x="157" y="131" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">system prompt</text>
+<rect x="30" y="146" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="146" width="3" height="30" rx="1.5" fill="#0969da"/>
+<text x="41" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">user/message</text>
+<text x="157" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">refactor the retry l…</text>
+<rect x="30" y="180" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="180" width="3" height="30" rx="1.5" fill="#1a7f37"/>
+<text x="41" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">assistant/message</text>
+<text x="157" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">+ 1 tool call</text>
+<rect x="30" y="214" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="214" width="3" height="30" rx="1.5" fill="#9a6700"/>
+<text x="41" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">tool/result</text>
+<text x="157" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">read × 12 files</text>
+<rect x="30" y="248" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="248" width="3" height="30" rx="1.5" fill="#1a7f37"/>
+<text x="41" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">assistant/message</text>
+<text x="157" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">the retry loop is …</text>
+<rect x="30" y="282" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="282" width="3" height="30" rx="1.5" fill="#9a6700"/>
+<text x="41" y="301" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">tool/result</text>
+<text x="157" y="301" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">grep × 4 hits</text>
+<rect x="30" y="316" width="272" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<rect x="30" y="316" width="3" height="30" rx="1.5" fill="#0969da"/>
+<text x="41" y="335" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">subagent</text>
+<text x="157" y="335" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">archify</text>
+<line x1="320" y1="208" x2="341" y2="208" stroke="#0969da" stroke-width="1.5"/>
+<path d="M341 203.5 L348 208 L341 212.5 Z" fill="#0969da"/>
+<line x1="656" y1="208" x2="677" y2="208" stroke="#0969da" stroke-width="1.5"/>
+<path d="M677 203.5 L684 208 L677 212.5 Z" fill="#0969da"/>
+<rect x="366" y="112" width="272" height="30" rx="6" fill="#eaeef2"/>
+<text x="374" y="131" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328" font-weight="600">▾ turn 3 · refactor the retry…</text>
+<text x="630" y="131" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#1a7f37" text-anchor="end">●</text>
+<text x="388" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">▾ step 3.1 · refactor the …</text>
+<text x="598" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10" fill="#59636e" text-anchor="end">4.0k</text>
+<text x="630" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#1a7f37" text-anchor="end">●</text>
+<text x="388" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">▸ step 3.2 · read × 12</text>
+<text x="598" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10" fill="#59636e" text-anchor="end">9.1k</text>
+<text x="630" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#9a6700" text-anchor="end">◐</text>
+<text x="388" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">▸ step 3.3 · grep × 4</text>
+<text x="598" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10" fill="#59636e" text-anchor="end">3.2k</text>
+<text x="630" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#8c959f" text-anchor="end">○</text>
+<text x="388" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">▾ step 3.4 · archify (agent)</text>
+<text x="598" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10" fill="#59636e" text-anchor="end">1.9k</text>
+<text x="630" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#9a6700" text-anchor="end">◐</text>
+<rect x="702" y="112" width="268" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="713" y="131" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">system prompt</text>
+<rect x="702" y="146" width="268" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="713" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">refactor the retry loop</text>
+<rect x="702" y="180" width="268" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+<text x="713" y="199" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">the retry loop is …</text>
+<rect x="702" y="214" width="268" height="30" rx="6" fill="#ffffff" stroke="#9a6700" stroke-width="1"/>
+<text x="713" y="233" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#1f2328">⟨assembled:key⟩ 12 file reads</text>
+<rect x="702" y="248" width="268" height="30" rx="6" fill="#ffffff" stroke="#8c959f" stroke-width="1"/>
+<text x="713" y="267" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">⟨assembled:off⟩ 4 results out</text>
+<rect x="16" y="376" width="968" height="44" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1"/>
+<text x="32" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12" fill="#59636e">18,200 tokens</text>
+<path d="M132 398 L148 398 M143 393 L148 398 L143 403" stroke="#0969da" stroke-width="1.5" fill="none"/>
+<text x="158" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12" fill="#0969da" font-weight="600">2,480 tokens</text>
+<text x="268" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11" fill="#59636e">same prefix · provider KV cache still reusable</text>
+<text x="648" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11.5" fill="#1a7f37">● full</text>
+<text x="718" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11.5" fill="#9a6700">◐ key</text>
+<text x="780" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="11.5" fill="#8c959f">○ off</text>
+<text x="852" y="404" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="10.5" fill="#59636e">a fold is a log event</text>
+</svg>
