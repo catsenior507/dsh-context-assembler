@@ -1,0 +1,328 @@
+/*
+ * Panel chrome for the assembled-context manager.
+ *
+ * The FILE NAME is load-bearing. This plugin is built with the shared
+ * external-plugin preset, which virtualises each stylesheet under its
+ * repository-relative id and hashes that id into every class name. Every
+ * plugin that names its sheet src/client/styles.module.css therefore lands on
+ * the SAME hash prefix: the igem-manager plugin and this one both produced
+ * ._0K34_a_launcher, its 52x52 circular-icon rules squashed this launcher, and
+ * this sheet's generic names (.panel, .button, .row, .label, .title, .header,
+ * .footer, .preview, .section, .mode, .tag, .select) leaked back into every
+ * other plugin's UI. A distinct file name gives a distinct hash and keeps the
+ * preset portable, which renaming each class would not.
+ *
+ * Every colour resolves through a CSS variable with a literal fallback, so the
+ * panel inherits the harness theme when one is mounted and still looks correct
+ * against a bare page when it is not. Sizes and layout are stated explicitly
+ * (width, height, box-sizing, white-space) because a floating launcher shares
+ * the page with every other plugin's global button rules.
+ */
+
+/* ── launcher: top-right pill ─────────────────────────────────────────── */
+
+/*
+ * --ca-right keeps this plugin's chrome clear of the harness right sidebar.
+ * The sidebar is a full-height right-anchored panel that slides in over the
+ * chat column, so a fixed top-right button lands exactly on its header
+ * controls. The panel measures the sidebar and publishes the offset; 12px is
+ * the no-sidebar default.
+ */
+.launcher {
+  position: fixed;
+  top: 10px;
+  right: var(--ca-right, 12px);
+  z-index: 70;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: auto;
+  height: 30px;
+  max-width: 240px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 11px;
+  border: 1px solid var(--dsh-border, rgba(120, 140, 170, 0.28));
+  border-radius: 999px;
+  background-color: var(--dsh-surface-raised, rgba(16, 23, 33, 0.92));
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 62%);
+  color: var(--dsh-text, #e6edf3);
+  font: 500 12px/1 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: grab;
+  touch-action: none;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, right 0.18s ease;
+}
+.launcher:hover {
+  border-color: #4a86d8;
+  box-shadow: 0 4px 16px rgba(31, 111, 235, 0.28);
+  transform: translateY(-1px);
+}
+.launcher:active { transform: translateY(0); cursor: grabbing; }
+.launcherOpen {
+  border-color: #4a86d8;
+  background-color: rgba(31, 111, 235, 0.2);
+}
+.launcherIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: block;
+  opacity: 0.9;
+}
+.launcherLabel {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.launcherBadge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(31, 111, 235, 0.22);
+  color: #9dc2f0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.launcherBadgeGood {
+  background: rgba(35, 134, 84, 0.22);
+  color: #7ee2a8;
+}
+
+/* ── panel ────────────────────────────────────────────────────────────── */
+
+.panel {
+  position: fixed;
+  top: 48px;
+  right: var(--ca-right, 12px);
+  z-index: 69;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(760px, calc(100vw - 24px));
+  height: min(78vh, 900px);
+  border: 1px solid var(--dsh-border, #2d3748);
+  border-radius: 14px;
+  background: var(--dsh-surface, #0f151d);
+  color: var(--dsh-text, #e6edf3);
+  font: 13px/1.45 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dsh-border, #222c39);
+  background: var(--dsh-surface-raised, #151d28);
+}
+.title { font-weight: 600; font-size: 13px; letter-spacing: 0.2px; }
+.sub { color: #8b98a9; font-size: 11px; }
+.spacer { flex: 1; }
+
+.select {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 110px;
+  max-width: 320px;
+  padding: 4px 6px;
+  border: 1px solid var(--dsh-border, #2d3748);
+  border-radius: 7px;
+  background: #0b1119;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.button {
+  box-sizing: border-box;
+  width: auto;
+  height: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--dsh-border, #2d3748);
+  border-radius: 7px;
+  background: #182130;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.button:hover:not(:disabled) { border-color: #3f7fd6; background: #1b2740; }
+.button:disabled { opacity: 0.45; cursor: default; }
+.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.primary:hover:not(:disabled) { background: #2a7df5; }
+.danger { color: #ffb4b4; }
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsh-border, #222c39);
+  font-size: 11px;
+  color: #8b98a9;
+}
+.stat b { color: #e6edf3; font-weight: 600; }
+.statGood b { color: #4ade80; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dsh-border, #222c39);
+}
+
+.banner { padding: 7px 12px; font-size: 12px; border-bottom: 1px solid var(--dsh-border, #222c39); }
+.bannerError { background: #3a1620; color: #ffc9c9; }
+.bannerOk { background: #12301f; color: #b7f7cf; }
+
+.tree { flex: 1; overflow: auto; padding: 6px 0 12px; }
+
+.empty {
+  margin: 18px auto 0;
+  max-width: 400px;
+  padding: 14px 16px;
+  border: 1px dashed #2b3746;
+  border-radius: 10px;
+  color: #8b98a9;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.row { display: flex; align-items: flex-start; gap: 6px; padding: 3px 10px; }
+.row:hover { background: rgba(255, 255, 255, 0.03); }
+.rowSelected { background: rgba(31, 111, 235, 0.12); }
+.caret {
+  width: 16px;
+  flex: none;
+  border: none;
+  background: none;
+  color: #7d8b9c;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 0;
+  text-align: center;
+}
+.caretSpacer { width: 16px; flex: none; }
+.label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.labelMuted { color: #8b98a9; }
+
+/*
+ * The gist of a collapsed container. It is deliberately brighter than the
+ * muted ordinal in front of it: "步骤 2.7" is a coordinate, the text after it
+ * is the reason the row exists.
+ */
+.rowHint {
+  margin-left: 8px;
+  color: #93a1b3;
+  font-size: 11px;
+}
+.seq { color: #6b7a8d; font-size: 11px; }
+.tokens { flex: none; color: #8b98a9; font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.modes { display: flex; flex: none; gap: 2px; }
+
+/*
+ * A container's batch buttons (turn / step / subagent rows) repeat on every
+ * row and would drown the tree in identical triples; they belong to the row's
+ * hover state. Keyboard users still reach them, because focus reveals them too.
+ */
+.batch { opacity: 0; transition: opacity 0.12s ease; }
+.row:hover .batch, .row:focus-within .batch { opacity: 1; }
+.mode {
+  box-sizing: border-box;
+  width: auto;
+  padding: 2px 6px;
+  border: 1px solid #26313f;
+  border-radius: 5px;
+  background: #131b26;
+  color: #8b98a9;
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mode:hover { border-color: #3f7fd6; }
+.modeOn { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.modeKey { background: #8a6d1f; border-color: #b08a2a; color: #fff; }
+.modeOff { background: #6b2530; border-color: #8c3140; color: #ffd9d9; }
+
+.tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  border: 1px solid #2b3746;
+  color: #93a1b3;
+  white-space: nowrap;
+}
+.tagTool { border-color: #2f5d43; color: #86d3a4; }
+.tagErr { border-color: #6b2530; color: #ff9b9b; }
+.tagDigest { border-color: #6b5a1f; color: #e8cf7a; }
+.tagAssistant { border-color: #2f4a6b; color: #9dc2f0; }
+.tagPending { border-color: #b08a2a; color: #ffd479; }
+
+.preview {
+  margin: 2px 10px 6px 40px;
+  padding: 8px 10px;
+  border: 1px solid #222c39;
+  border-radius: 8px;
+  background: #0b1119;
+  color: #b9c5d3;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* Banner shown when the tree came from storage rather than a live session. */
+.readOnlyStrip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--dsh-border, #222c39);
+  background: rgba(180, 130, 40, 0.14);
+  color: var(--dsh-text-muted, #9aa4b2);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.readOnlyStrip b { flex: none; color: #e0b060; font-weight: 600; }
+
+.section { border-top: 1px solid var(--dsh-border, #222c39); padding: 8px 12px; }
+.sectionTitle { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; }
+.presetRow { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.presetInput {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid #26313f;
+  border-radius: 6px;
+  background: #0b1119;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+.messages { max-height: 220px; overflow: auto; padding: 4px 0; }
+.messageRow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; color: #9aa7b6; }
+.messageText { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.footer { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--dsh-border, #222c39); background: var(--dsh-surface-raised, #151d28); }
+.hint { color: #7d8b9c; font-size: 11px; }
+

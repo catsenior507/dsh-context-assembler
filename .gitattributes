@@ -1,0 +1,10 @@
+# Normalise everything to LF so the committed build output (lib/) is byte-stable
+# across platforms and Windows checkouts do not churn every line.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary

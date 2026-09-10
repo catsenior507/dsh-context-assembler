@@ -1,0 +1,6 @@
+# dsh-context-assembler bundle patch: inserts the host half (context tree service,
+# assembly planner, HTTP API, agent tool) and its browser panel into the web roster.
+# Install with `dsh plugin --profile web add <path-or-git-url>`.
+- insert:
+    - id: ui-context-assembler
+      name: '@dsh-external/dsh-client-plugin-context-assembler'
