@@ -103,7 +103,8 @@ dsh plugin --profile web add <path-to-this-repo>
 dsh plugin --profile web add https://github.com/catsenior507/dsh-context-assembler
 ```
 
-Then **restart dsh web** so it loads (the watchdog panel's restart button is the quick way).
+Then **restart dsh web** so it loads — the [dsh-web-watchdog](https://github.com/catsenior507/dsh-web-watchdog) panel's restart
+button is the quick way.
 
 ## Using it
 
@@ -392,6 +393,13 @@ probes the same range, and a failed connection reports "the host half did not lo
 - **Surface node 0 (the system prompt) cannot be folded**: harness rejects a replacement covering it, and
   the panel marks that row as non-toggleable.
 - **Folded regions do not expire on their own**: the panel will not re-decide for you. That is deliberate.
+
+## See also
+
+- **[dsh-web-watchdog](https://github.com/catsenior507/dsh-web-watchdog)** — crash logging, exponential-backoff auto-restart, and a status
+  panel for the dsh web GUI. Under the web profile this plugin is loaded by that host, so the watchdog's
+  restart button is also the fastest way to pick up a newly built version of *this* plugin. The two are
+  independent and install separately.
 
 ## License
 

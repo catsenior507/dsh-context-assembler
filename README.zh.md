@@ -92,7 +92,7 @@ dsh plugin --profile web add <本仓库路径>
 dsh plugin --profile web add https://github.com/catsenior507/dsh-context-assembler
 ```
 
-装好后需要**重启 dsh web** 才会加载（守望者面板的「重启」按钮最快）。
+装好后需要**重启 dsh web** 才会加载（[守望者面板](https://github.com/catsenior507/dsh-web-watchdog)的「重启」按钮最快）。
 
 ## 使用
 
@@ -341,6 +341,12 @@ source v0 artifact remains unchanged
 - **子代理会话要在会话选择器里切换过去单独装配**：它们拥有独立表层，父会话里的子代理节点只用于导航；
 - **表层第 0 号节点（系统提示词）不可折叠**：harness 会拒绝覆盖它的替换，面板把该行标为不可切换；
 - 折叠区不会自动过期：面板不会替你重新决定，这是有意的。
+
+## 另见
+
+- **[dsh-web-watchdog](https://github.com/catsenior507/dsh-web-watchdog)** —— dsh web GUI 的崩溃记录、指数退避自动重启与状态面板。
+  在 web profile 下本插件就是被那个宿主加载的，所以守望者的重启按钮同时也是让**本插件的新构建**
+  生效最快的方式。两者互相独立，可分别安装。
 
 ## 许可
 
