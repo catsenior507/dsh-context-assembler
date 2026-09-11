@@ -9,8 +9,12 @@ scratch-test-data/
 
 # Build output IS committed on purpose: the dsh runtime loads lib/index.js and
 # lib/client.js directly, so `dsh plugin add <git-url>` installs a working
-# plugin without needing a build toolchain. `build/` is tsdown's staging area.
-build/
+# plugin without needing a build toolchain.
+#
+# `build/` is NOT ignored: despite the name it holds source, not output —
+# build/tsdown.client.ts is the bundler helper that tsdown.config.ts imports,
+# so ignoring it makes a fresh clone fail to build. This was wrong in v0.1.0
+# and is corrected here.
 
 # Editor and OS noise
 .DS_Store
