@@ -137,6 +137,50 @@ function sync(): number {
 }
 
 /**
+ * Follow the conversation the sidebar has selected.
+ *
+ * The sidebar marks its active conversation row with `aria-selected`, so this
+ * reads that attribute rather than subscribing to the shell's own session store:
+ * this plugin has no seat in the session list, so it is never handed the hooks
+ * the shell gives its seats. The rendered attribute is the same contract
+ * `installSidebarIcons` already depends on, and it keeps working when the
+ * selection moves for a reason the panel would otherwise never hear about - a
+ * keyboard shortcut, a search result, opening a fork.
+ *
+ * The attribute is observed explicitly. Selection does not necessarily add or
+ * remove a row: React flips the attribute on a node that is already mounted, and
+ * a childList-only observer never sees it.
+ * @param onChange - called with the session id each time the selection moves.
+ * @returns a function that stops watching.
+ */
+export function installActiveSessionWatch(onChange: (sessionId: string) => void): () => void {
+  let last: string | null = null
+  let queued = false
+  const read = (): void => {
+    queued = false
+    const row = document.querySelector('[role="treeitem"][aria-selected="true"]')
+    if (row === null) return
+    const id = readSessionId(row)
+    if (id === null || id === last) return
+    last = id
+    onChange(id)
+  }
+  const observer = new MutationObserver(() => {
+    if (queued) return
+    queued = true
+    window.requestAnimationFrame(read)
+  })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['aria-selected'],
+  })
+  read()
+  return () => observer.disconnect()
+}
+
+/**
  * Keep the sidebar decorated as the harness re-renders it.
  *
  * The observer watches the whole body because the sidebar is virtualised and

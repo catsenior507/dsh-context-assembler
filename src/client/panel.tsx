@@ -21,7 +21,7 @@ import type {
   ContextTreeResponse,
 } from '../shared/types'
 import { api } from './api'
-import { installSidebarIcons, setSidebarOpener } from './sidebar'
+import { installActiveSessionWatch, installSidebarIcons, setSidebarOpener } from './sidebar'
 import css from './context-assembler.module.css'
 
 /** Uncommitted per-row mode changes, keyed by surface seq. */
@@ -444,6 +444,13 @@ export function ContextAssemblerApp(): React.ReactElement {
   const [status, setStatus] = useState<{ kind: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Follow the conversation the sidebar has selected. The panel keeps whatever
+  // the user picks in its own selector until the sidebar selection actually
+  // moves: a deliberate pick is honoured, and a switch in the shell wins over
+  // it. Whichever acted last decides, which is what a person expects from two
+  // controls pointed at the same thing.
+  useEffect(() => installActiveSessionWatch(setSessionId), [])
 
   const report = useCallback((kind: string, text: string) => {
     setStatus({ kind: kind, text: text });
