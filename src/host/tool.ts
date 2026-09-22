@@ -206,9 +206,21 @@ async function run(assembler: ContextAssembler, args: Record<string, unknown>, e
 
   if (action === 'messages') {
     const messages = await assembler.messagesFor(sessionId)
-    const tokens = messages.reduce((sum, message) => sum + message.tokens, 0)
+    const heuristic = messages.reduce((sum, message) => sum + message.tokens, 0)
+    const usage = assembler.usageFor(sessionId)
+    const tokens = usage?.tokens ?? heuristic
+    // These notes are the point of this branch. A bare token count invites the
+    // reader to treat it as a fraction of capacity, which is how a session at a
+    // third of its window gets described as running out of room.
+    const notes = [
+      usage === null
+        ? 'Size is the sum of the messages on the surface, not a provider-reported figure.'
+        : 'Size is the provider-reported request pressure: the meter replayed this session log.',
+      'The model context window is not visible from here, so this is a count and NOT a fraction of capacity.',
+      'Do not read it as nearly full or nearly empty without comparing it to the window separately.',
+    ]
     return {
-      action, sessionId, rows: [], notes: [], savedTokens: 0, visibleTokens: tokens,
+      action, sessionId, rows: [], notes, savedTokens: 0, visibleTokens: tokens,
       summary: 'The model currently receives ' + messages.length + ' messages, about ' + tokens + ' tokens.',
     }
   }

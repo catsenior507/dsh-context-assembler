@@ -56,6 +56,17 @@ export interface SessionStoreLike {
 }
 
 /** A cordis-style context, narrowed to what this plugin calls. */
+/**
+ * The slice of the token meter this plugin uses.
+ *
+ * `measure` replays the session log and returns request pressure anchored to
+ * whatever the provider last reported, which is a different and better number
+ * than summing the message list.
+ */
+export interface TokenMeterLike {
+  measure(session: unknown): { totalTokens?: number }
+}
+
 export interface HostContextLike {
   sessions?: SessionStoreLike
   on?(name: string, listener: (...args: unknown[]) => void): unknown
@@ -293,6 +304,7 @@ export class ContextAssembler {
   private readonly persistence: PersistenceLookup
   private readonly log: (message: string) => void
   private index: SessionIndexFile = { version: 1, entries: {} }
+  private readonly meterLookup: () => TokenMeterLike | undefined
   private indexing = false
   private readFailures = 0
   private lastReadError: string | undefined
@@ -304,7 +316,9 @@ export class ContextAssembler {
     config: ResolvedConfig,
     persistence?: PersistenceLookup,
     log?: (message: string) => void,
+    meterLookup?: () => TokenMeterLike | undefined,
   ) {
+    this.meterLookup = meterLookup ?? (() => undefined)
     this.persistence = persistence ?? (() => undefined)
     this.log = log ?? (() => undefined)
     this.store = store
@@ -492,6 +506,34 @@ export class ContextAssembler {
       draft: this.draftFor(sessionId),
       at: Date.now(),
     }
+  }
+
+  /**
+   * Context pressure for one session, preferring the provider-anchored figure.
+   *
+   * Summing the message list is a heuristic over whatever the surface happens to
+   * hold. The meter reports what the provider actually charged the last request
+   * at. The second is the number a reader should trust, so it wins when present,
+   * and the caller is told which one it got.
+   *
+   * Only live sessions can be measured: a stored log is replayed as text, and
+   * pricing it would invent a route it was never sent under.
+   * @param sessionId - the session to measure.
+   * @returns the measured size and whether it is provider-anchored, or null.
+   */
+  usageFor(sessionId: string): { tokens: number; anchored: boolean } | null {
+    const session = this.store.get(sessionId)
+    if (session === undefined) return null
+    const meter = this.meterLookup()
+    if (meter === undefined) return null
+    try {
+      const measured = meter.measure(session)
+      const tokens = measured?.totalTokens
+      if (typeof tokens === 'number' && tokens > 0) return { tokens, anchored: true }
+    } catch {
+      // A meter failure must degrade to the heuristic, never break the tool.
+    }
+    return null
   }
 
   /** The derived history for any session, live or stored. */

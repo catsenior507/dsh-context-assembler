@@ -483,3 +483,34 @@ test('a missing persistence backend degrades to live sessions only', async () =>
   assert.equal(rows.length, 1);
   await assert.rejects(async () => { await assembler.readTree('nope') }, /持久化记录/);
 });
+
+test('usageFor prefers the provider-anchored figure and degrades to null', () => {
+  const live = sampleSession('session-usage');
+  const store = storeOf([live]);
+  const config = resolveConfig({ dataDir: tempDataDir() });
+
+  // No meter in the composition: the caller falls back to summing messages.
+  assert.equal(new ContextAssembler(store, config).usageFor('session-usage'), null);
+
+  // A stored or unknown session cannot be priced: it is text, not a route.
+  const bare = new ContextAssembler(store, config);
+  assert.equal(bare.usageFor('session-somewhere-else'), null);
+
+  // A reporting meter wins, and says so.
+  const metered = new ContextAssembler(store, config, undefined, undefined, () => ({
+    measure: () => ({ totalTokens: 278_283 }),
+  }));
+  assert.deepEqual(metered.usageFor('session-usage'), { tokens: 278_283, anchored: true });
+
+  // A meter that throws must degrade, not break the tool.
+  const broken = new ContextAssembler(store, config, undefined, undefined, () => ({
+    measure: () => { throw new Error('boom') },
+  }));
+  assert.equal(broken.usageFor('session-usage'), null);
+
+  // Zero is the absence of a measurement, not a measurement of zero.
+  const zero = new ContextAssembler(store, config, undefined, undefined, () => ({
+    measure: () => ({ totalTokens: 0 }),
+  }));
+  assert.equal(zero.usageFor('session-usage'), null);
+});

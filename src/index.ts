@@ -32,6 +32,7 @@ import {
   type HostContextLike,
   type SessionPersistenceLike,
   type SessionStoreLike,
+  type TokenMeterLike,
 } from './host/service.ts'
 import { registerWebRoute, startStandaloneServer, type WebServerLike } from './host/api.ts'
 import { registerTool, type ToolRegistryLike } from './host/tool.ts'
@@ -109,6 +110,11 @@ export function apply(ctx: PluginContext, config?: Partial<ContextAssemblerConfi
     resolved,
     () => optionalService<SessionPersistenceLike>(ctx, 'sessionPersistence'),
     (message) => ctx.logger?.warn?.(message),
+    // Resolved lazily for the same reason as persistence: the token meter is
+    // registered but not necessarily active when this plugin applies, so
+    // reading it now would capture undefined and lose the provider-anchored
+    // figure forever.
+    () => optionalService<TokenMeterLike>(ctx, 'tokenMeter'),
   )
   // Titles and event counts for stored conversations are read from their logs,
   // which costs a full read each; warming them at mount means the picker is
