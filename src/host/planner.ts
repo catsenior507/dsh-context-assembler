@@ -379,7 +379,7 @@ function renderRun(
         id: (synthesizedUserMessage('off', items, previousTokens, '') as { id: string }).id,
         role: 'user',
         content: [],
-        source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'assembled:off items=' + items + ' tokens=' + previousTokens },
+        source: { kind: 'plugin:' + PLUGIN_ID, form: 'notice', summary: 'assembled:off items=' + items + ' tokens=' + previousTokens },
       },
       sourceEventSeqs: seqs,
       op: {
@@ -413,8 +413,7 @@ function synthesizedUserMessage(
     role: 'user',
     content: [{ type: 'text', text }],
     source: {
-      kind: 'plugin',
-      plugin: PLUGIN_ID,
+      kind: 'plugin:' + PLUGIN_ID,
       form: 'notice',
       summary: 'assembled:' + mode + ' items=' + items + ' tokens=' + tokens,
     },
@@ -519,7 +518,7 @@ function restoreVerbatim(
         id: mintMessageId(),
         role: 'user',
         content,
-        source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'assembled:full items=1' },
+        source: { kind: 'plugin:' + PLUGIN_ID, form: 'notice', summary: 'assembled:full items=1' },
       },
       sourceEventSeqs: [digestEvent.seq],
       op: {
